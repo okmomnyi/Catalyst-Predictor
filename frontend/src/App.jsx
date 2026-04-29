@@ -20,12 +20,6 @@ function PredictorView({ onSubmit, loading, error, prediction, formTemp, results
             <source src="https://catalyst.kelvinmomanyi.tech/video_generation_0.mp4" type="video/mp4" />
           </video>
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_transparent_0%,_rgba(12,14,22,0.85)_100%)]" />
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[110%] h-[110%] opacity-20 rotate-12" style={{ mixBlendMode: 'screen' }}>
-            <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuAHMgikqpfN-qpdrXTiTuKq6LQBkZYJB0EAkjG9fRFAUOlQdIVn9H9Go58WHYE0935gwd5aXfKH74hlg2zfxqzXWOapqA9UXLZ_0nrJjq3d9h-tquN8LJHGfXveoqb6_aUl2s_dpCLIJgfDHtWFuRhOwMRGDsZEkyN8sVKLjBfhH53arC4EOlwywzIrQJClf_BlWvI46ocNUfbDPRVA2hp9IQxxlKdA2PI33ZLfS-gSoIsfiaZVrWGk4DmkTYWc-UyXttnbCZMQWMRW"
-              alt="" aria-hidden="true" className="w-full h-full object-contain"
-              onError={e => { e.target.style.display = 'none'; }}
-            />
-          </div>
         </div>
 
         <div className="relative z-10 w-full max-w-4xl mx-auto">

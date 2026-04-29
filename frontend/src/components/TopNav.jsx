@@ -170,12 +170,6 @@ export default function TopNav({ onNewExperiment, activeTab, onTabChange }) {
           {showProfile && (
             <div className="absolute right-0 top-12 w-64 glass-panel rounded-xl shadow-2xl z-50 border border-white/10 overflow-hidden">
               <div className="px-4 py-4 border-b border-white/5 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-[#282a32] border border-white/10 overflow-hidden shrink-0">
-                  <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuCUTE-k1j7kOCJcjuzAWldOooNXZwDt9ewG6UrZiqSdIE_f15Iv7qMrdWJYJxBopXE1UDIbvp72JVP1dfx7vr_H2Qflp3IZyhGHtwAwVIKyAbIWlkCSyrU9omUQbbZ3UC9U22Q5vRFEmDybXNlHbMuzbaNGJrTPQroVgjWlNaf1QFYDbdWWsMmty3isLcErAH4mlMeHHKsWubwi2DC8yKqG-RdawWFAyG5eh1hSYLgv0kdNwQggvB-MLDmA_Rmrc9QNxny6201JqYU-"
-                    alt="Profile" className="w-full h-full object-cover"
-                    onError={e => { e.target.style.display = 'none'; }}
-                  />
-                </div>
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-on-surface truncate">Research Division</p>
                   <p className="text-xs text-slate-500 truncate">Molecular Dynamics</p>
