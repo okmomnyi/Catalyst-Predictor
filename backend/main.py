@@ -23,7 +23,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register route modules under /api prefix
+# Register routes directly for Vercel Services mounted at /api.
+app.include_router(health.router)
+app.include_router(predict.router)
+app.include_router(validate.router)
+app.include_router(finder.router)
+
+# Keep /api routes available for local development and non-Services deploys.
 app.include_router(health.router, prefix="/api")
 app.include_router(predict.router, prefix="/api")
 app.include_router(validate.router, prefix="/api")

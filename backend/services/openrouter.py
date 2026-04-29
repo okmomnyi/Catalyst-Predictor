@@ -16,6 +16,9 @@ OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODEL_ID   = os.getenv("MODEL_ID",   "google/gemini-2.0-flash-001")
 API_KEY_1  = os.getenv("OPENROUTER_API_KEY")
 API_KEY_2  = os.getenv("OPENROUTER_API_KEY_2")  # fallback
+APP_URL    = os.getenv("APP_URL") or (
+    f"https://{os.getenv('VERCEL_URL')}" if os.getenv("VERCEL_URL") else "http://localhost:5173"
+)
 
 # Status codes that warrant a retry on the fallback key
 _RETRYABLE = {429, 503, 504}
@@ -25,7 +28,7 @@ async def _call_with_key(key: str, system_prompt: str, user_prompt: str) -> str:
     headers = {
         "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "http://localhost:5173",
+        "HTTP-Referer": APP_URL,
         "X-Title":      "Catalyst Effect Predictor",
     }
     payload = {
