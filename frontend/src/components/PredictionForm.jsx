@@ -256,7 +256,7 @@ export default function PredictionForm({ onSubmit, loading, error }) {
                     <span className="material-symbols-outlined text-secondary shrink-0 mt-px" style={{ fontSize: 16 }}>info</span>
                     <p className="text-xs text-slate-400 leading-relaxed">
                       <span className="text-secondary font-medium">GIGO principle:</span> the more precise your inputs, the more precise the prediction.
-                      Omitting these fields gives qualitative results (Fast/Slow). Adding them unlocks quantitative outputs — completion time, activation energy, yield %.
+                      Omitting these fields gives qualitative results only. Quantitative outputs require sufficient experimental inputs.
                     </p>
                   </div>
 

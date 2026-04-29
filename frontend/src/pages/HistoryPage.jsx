@@ -133,7 +133,7 @@ function HistoryCard({ entry, onDelete }) {
             {p.best_catalyst ? (
               <>
                 <span className="material-symbols-outlined text-yellow-400" style={{ fontSize: 14, fontVariationSettings: "'FILL' 1" }}>star</span>
-                <span className="text-xs text-slate-400">Best: <span className="text-on-surface font-medium">{p.best_catalyst}</span></span>
+                <span className="text-xs text-slate-400">Top evaluated: <span className="text-on-surface font-medium">{p.best_catalyst}</span></span>
               </>
             ) : (
               <span className="text-xs text-slate-600">No valid catalysts</span>

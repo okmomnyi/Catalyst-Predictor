@@ -40,21 +40,21 @@ async def find_catalyst(request: CatalystSearchRequest):
                 catalyst_type=c.get("catalyst_type", "Unknown"),
                 suitability=c.get("suitability", "Good"),
                 suitability_score=float(c.get("suitability_score", 0.7)),
-                why=c.get("why", ""),
-                conditions=c.get("conditions"),
+                why=_sanitize_text(c.get("why", "")),
+                conditions=_sanitize_text(c.get("conditions")),
                 availability=c.get("availability"),
                 safety=c.get("safety", "CAUTION"),
-                safety_note=c.get("safety_note"),
+                safety_note=_sanitize_safety_text(c.get("safety_note")),
             )
             for c in data.get("catalysts", [])
         ]
 
         result = CatalystFinderResponse(
-            reaction_understood=data["reaction_understood"],
+            reaction_understood=_sanitize_text(data["reaction_understood"]),
             catalysts=catalysts,
-            recommended_conditions=data.get("recommended_conditions"),
+            recommended_conditions=_sanitize_text(data.get("recommended_conditions")),
             overall_safety=data.get("overall_safety", "CAUTION"),
-            notes=data.get("notes"),
+            notes=_sanitize_safety_text(data.get("notes")),
         )
         return result.model_dump()
 
@@ -62,3 +62,28 @@ async def find_catalyst(request: CatalystSearchRequest):
         raise HTTPException(status_code=422, detail=f"AI returned malformed JSON: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Catalyst search failed: {str(e)}")
+
+
+def _sanitize_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    replacements = {
+        "goes to completion": "is thermodynamically favorable",
+        "go to completion": "be thermodynamically favorable",
+        "best catalyst": "evaluated catalyst",
+        "optimal": "supported",
+        "physiological conditions": "specified conditions",
+    }
+    updated = value
+    for old, new in replacements.items():
+        updated = updated.replace(old, new).replace(old.capitalize(), new.capitalize())
+    return updated
+
+
+def _sanitize_safety_text(value: str | None) -> str | None:
+    updated = _sanitize_text(value)
+    if updated is None:
+        return None
+    if "safe" in updated.lower():
+        return "Hazards depend on concentration, conditions, and handling controls."
+    return updated

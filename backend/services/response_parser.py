@@ -48,7 +48,7 @@ def parse_prediction_response(raw_response: str) -> PredictionResponse:
             activation_energy_reduction=c.get("activation_energy_reduction"),
             activation_energy_range_kj_mol=c.get("activation_energy_range_kj_mol"),
             rate_law=c.get("rate_law"),
-            efficiency_score=float(c.get("efficiency_score", 0.5)),
+            efficiency_score=_optional_float(c.get("efficiency_score")),
             efficiency_basis=c.get("efficiency_basis"),
             reasoning=c.get("reasoning", ""),
             activity=_optional_float(c.get("activity")),

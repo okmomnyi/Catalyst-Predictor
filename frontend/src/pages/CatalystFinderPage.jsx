@@ -102,7 +102,7 @@ function CatalystCard({ catalyst, index }) {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-white/5">
               {catalyst.conditions && (
                 <div className="space-y-1">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Optimal Conditions</p>
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Supported Conditions</p>
                   <p className="text-xs text-slate-400 leading-relaxed">{catalyst.conditions}</p>
                 </div>
               )}

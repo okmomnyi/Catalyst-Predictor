@@ -16,9 +16,9 @@ SAFETY_CONFIG = {
         "colour_hex": "#22c55e",          # Green
         "border_colour": "#16a34a",
         "icon": "✅",
-        "label": "SAFE",
+        "label": "LOW HAZARD",
         "action": "proceed",              # Frontend: show results normally
-        "banner_text": "This reaction is safe to perform under standard lab conditions."
+        "banner_text": "Low hazard may apply only under standard lab handling; hazards depend on concentration and conditions."
     },
     SafetyLevel.CAUTION: {
         "ui_theme": "caution",
@@ -54,7 +54,7 @@ SAFETY_CONFIG = {
         "icon": "☠️",
         "label": "DO NOT PERFORM",
         "action": "block",               # Frontend: block output, show stop screen
-        "banner_text": "This reaction CANNOT be safely performed outside a professional laboratory. Do not attempt."
+        "banner_text": "Do not perform without a documented professional risk assessment and appropriate controls."
     }
 }
 

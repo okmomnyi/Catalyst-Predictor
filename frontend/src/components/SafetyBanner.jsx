@@ -11,7 +11,7 @@ const TIER_META = {
     barColor:    'bg-green-500',
     barWidth:    '15%',
     riskLabel:   '15% RISK',
-    title:       'All Clear — Safe to Proceed',
+    title:       'Low Hazard Indicated',
   },
   CAUTION: {
     borderColor: '#eab308',
@@ -124,7 +124,7 @@ export default function SafetyBanner({ safetyMessage, precautions }) {
                 {/* Blocked message */}
                 {blocked && (
                   <div className="mt-3 rounded-lg bg-red-950/60 border border-red-900 px-4 py-3 text-red-200 text-sm font-medium">
-                    ⛔ This reaction CANNOT be safely performed outside a professional laboratory. Results are hidden.
+                    Do not perform without a documented professional risk assessment and appropriate controls. Results are hidden.
                   </div>
                 )}
               </div>

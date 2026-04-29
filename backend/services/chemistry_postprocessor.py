@@ -78,10 +78,14 @@ def apply_chemistry_consistency(
     request: PredictionRequest,
 ) -> PredictionResponse:
     """Apply deterministic corrections after AI parsing."""
+    _sanitize_overclaims(prediction)
+    _filter_side_reactions(prediction, request)
+    _sanitize_safety(prediction)
+
     if _is_haber_bosch(request, prediction):
         _correct_haber_bosch(prediction, request)
 
-    _rank_and_cap_scores(prediction)
+    _validate_consistency(prediction, request)
     return prediction
 
 
@@ -146,6 +150,7 @@ def _correct_haber_bosch(prediction: PredictionResponse, request: PredictionRequ
         rate_label = _rate_label(rate_index)
         yield_label = _yield_label(yield_score)
         components = _score_components(profile, rate_index, yield_score, temp_c, pressure_atm)
+        has_quantitative_inputs = _has_complete_quantitative_inputs(request)
         raw_score = _weighted_score(components)
         capped_score, constraints = _apply_score_caps(raw_score, rate_index, yield_score, components)
 
@@ -173,7 +178,7 @@ def _correct_haber_bosch(prediction: PredictionResponse, request: PredictionRequ
                 f"{profile.ea_range_kj_mol[0]:.0f}-{profile.ea_range_kj_mol[1]:.0f}"
             ),
             rate_law=None,
-            efficiency_score=round(capped_score / 100.0, 3),
+            efficiency_score=round(capped_score / 100.0, 3) if has_quantitative_inputs else None,
             efficiency_basis=(
                 "Weighted score = 0.30 activity + 0.20 selectivity + 0.20 stability "
                 "+ 0.15 energy_efficiency + 0.15 economic_viability, with caps for low rate/yield."
@@ -182,21 +187,21 @@ def _correct_haber_bosch(prediction: PredictionResponse, request: PredictionRequ
                 f"{profile.notes} At {temp_c:g} C and {pressure_atm:g} atm, the model separates "
                 f"faster Arrhenius kinetics from the lower high-temperature equilibrium yield."
             ),
-            activity=round(components["activity"], 1),
-            selectivity=round(components["selectivity"], 1),
-            stability=round(components["stability"], 1),
-            energy_efficiency=round(components["energy_efficiency"], 1),
-            economic_viability=round(components["economic_viability"], 1),
-            weighted_score=round(capped_score, 1),
+            activity=round(components["activity"], 1) if has_quantitative_inputs else None,
+            selectivity=round(components["selectivity"], 1) if has_quantitative_inputs else None,
+            stability=round(components["stability"], 1) if has_quantitative_inputs else None,
+            energy_efficiency=round(components["energy_efficiency"], 1) if has_quantitative_inputs else None,
+            economic_viability=round(components["economic_viability"], 1) if has_quantitative_inputs else None,
+            weighted_score=round(capped_score, 1) if has_quantitative_inputs else None,
             score_constraints=constraints,
-            relative_rate=round(rate_index, 4),
-            equilibrium_yield_score=round(yield_score, 1),
+            relative_rate=round(rate_index, 4) if has_quantitative_inputs else None,
+            equilibrium_yield_score=round(yield_score, 1) if has_quantitative_inputs else None,
             thermodynamic_assessment=prediction.thermodynamic_assessment,
             kinetic_assessment=(
                 f"Relative rate index {rate_index:.3g}; higher T increases this term through exp(-Ea/RT)."
             ),
             condition_warnings=warnings,
-            confidence="medium" if 350 <= temp_c <= 550 and pressure_atm >= 50 else "low",
+            confidence="Medium" if has_quantitative_inputs and 350 <= temp_c <= 550 and pressure_atm >= 50 else "Low",
         )
         corrected.append(catalyst)
 
@@ -210,6 +215,7 @@ def _correct_haber_bosch(prediction: PredictionResponse, request: PredictionRequ
         prediction.catalysts = corrected
         prediction.valid_catalyst_count = len(corrected)
         prediction.best_catalyst = None
+        prediction.prediction_quality = "QUANTITATIVE" if _has_complete_quantitative_inputs(request) else "QUALITATIVE"
         prediction.general_reasoning = (
             "For ammonia synthesis, equilibrium and kinetics are separated. Raising temperature "
             "increases rate by Arrhenius behavior but reduces exothermic equilibrium conversion; "
@@ -220,7 +226,7 @@ def _correct_haber_bosch(prediction: PredictionResponse, request: PredictionRequ
             prediction.assumptions_made,
             [
                 "Idealized gas-phase Haber-Bosch trend model used because detailed reactor data were not supplied.",
-                "Catalyst promoters, supports, particle size, poisons, and H2:N2 ratio were not specified.",
+                "Catalyst promoters, supports, particle size, poisons, and H2:N2 ratio are unknown.",
             ],
         )
 
@@ -367,10 +373,37 @@ def _haber_condition_warnings(temp_c: float, pressure_atm: float) -> list[str]:
     return warnings
 
 
-def _rank_and_cap_scores(prediction: PredictionResponse) -> None:
+def _validate_consistency(prediction: PredictionResponse, request: PredictionRequest) -> None:
+    has_quantitative_inputs = _has_complete_quantitative_inputs(request)
+    if not has_quantitative_inputs:
+        prediction.prediction_quality = "QUALITATIVE"
+        prediction.missing_for_quantitative = _missing_quantitative_inputs(request)
+
     for catalyst in prediction.catalysts:
+        catalyst.predicted_rate = _normalize_label(catalyst.predicted_rate)
+        catalyst.predicted_yield = _normalize_label(catalyst.predicted_yield)
+        catalyst.confidence = _normalize_confidence(catalyst.confidence)
+
+        if not has_quantitative_inputs:
+            catalyst.efficiency_score = None
+            catalyst.weighted_score = None
+            catalyst.activity = None
+            catalyst.selectivity = None
+            catalyst.stability = None
+            catalyst.energy_efficiency = None
+            catalyst.economic_viability = None
+            catalyst.relative_rate = None
+            catalyst.equilibrium_yield_score = None
+            catalyst.efficiency_basis = "insufficient data"
+            catalyst.score_constraints = _merge_unique(
+                catalyst.score_constraints,
+                ["Numerical scoring removed because quantitative inputs are incomplete."],
+            )
+            catalyst.confidence = "Low"
+            continue
+
         if catalyst.weighted_score is None:
-            score = max(0.0, min(100.0, catalyst.efficiency_score * 100.0))
+            score = max(0.0, min(100.0, (catalyst.efficiency_score or 0.0) * 100.0))
             if catalyst.predicted_rate.lower() == "slow":
                 score = min(score, 45.0)
                 catalyst.score_constraints.append("Predicted rate is slow, so score capped at 45.")
@@ -379,20 +412,171 @@ def _rank_and_cap_scores(prediction: PredictionResponse) -> None:
                 catalyst.score_constraints.append("Predicted yield is low, so score capped at 50.")
             catalyst.weighted_score = round(score, 1)
             catalyst.efficiency_score = round(score / 100.0, 3)
+        if catalyst.predicted_rate.lower() == "slow" and (catalyst.weighted_score or 0.0) > 45.0:
+            catalyst.weighted_score = 45.0
+            catalyst.efficiency_score = 0.45
+            catalyst.confidence = _downgrade_confidence(catalyst.confidence)
+            catalyst.score_constraints.append("Inconsistency corrected: slow rate cannot have a high score.")
+        if catalyst.predicted_yield.lower() == "low" and (catalyst.weighted_score or 0.0) > 50.0:
+            catalyst.weighted_score = 50.0
+            catalyst.efficiency_score = 0.50
+            catalyst.confidence = _downgrade_confidence(catalyst.confidence)
+            catalyst.score_constraints.append("Inconsistency corrected: low yield cannot claim high efficiency.")
 
-    prediction.catalysts.sort(key=lambda c: c.weighted_score or 0.0, reverse=True)
+    prediction.catalysts.sort(
+        key=lambda c: c.weighted_score if c.weighted_score is not None else -c.rank,
+        reverse=True,
+    )
     for index, catalyst in enumerate(prediction.catalysts, start=1):
         catalyst.rank = index
 
-    prediction.best_catalyst = prediction.catalysts[0].catalyst if prediction.catalysts else None
+    prediction.best_catalyst = prediction.catalysts[0].catalyst if len(prediction.catalysts) > 1 else None
     prediction.consistency_checks = _merge_unique(
         prediction.consistency_checks,
         [
             "Slow-rate predictions are capped and cannot receive high scores.",
             "Low-yield predictions are capped and cannot receive high scores.",
-            "Catalysts are ranked dynamically by weighted score, not by a hardcoded winner.",
+            "Numerical scores are removed when quantitative inputs are incomplete.",
+            "A single catalyst is reported as evaluated, not best.",
         ],
     )
+    if _unrealistic_conditions(request):
+        prediction.condition_warnings = _merge_unique(
+            prediction.condition_warnings,
+            ["Submitted conditions are outside a typical validation range; confidence downgraded."],
+        )
+        for catalyst in prediction.catalysts:
+            catalyst.confidence = _downgrade_confidence(catalyst.confidence)
+
+
+def _has_complete_quantitative_inputs(request: PredictionRequest) -> bool:
+    return all(
+        value is not None
+        for value in (request.concentration, request.volume_ml, request.catalyst_mass_g)
+    )
+
+
+def _missing_quantitative_inputs(request: PredictionRequest) -> list[str]:
+    missing = []
+    if request.concentration is None:
+        missing.append("concentration")
+    if request.volume_ml is None:
+        missing.append("volume_ml")
+    if request.catalyst_mass_g is None:
+        missing.append("catalyst_mass_g")
+    return missing
+
+
+def _unrealistic_conditions(request: PredictionRequest) -> bool:
+    pressure = request.pressure_atm or 1.0
+    return request.temperature_celsius < -20 or request.temperature_celsius > 800 or pressure > 300
+
+
+def _sanitize_overclaims(prediction: PredictionResponse) -> None:
+    replacements = {
+        "goes to completion": "is thermodynamically favorable",
+        "go to completion": "be thermodynamically favorable",
+        "complete conversion": "high conversion only if supported by equilibrium and reactor data",
+        "best catalyst": "evaluated catalyst",
+        "optimal": "supported",
+        "physiological conditions": "specified conditions",
+    }
+    fields = [
+        "reaction_summary",
+        "thermodynamics",
+        "thermodynamic_assessment",
+        "kinetic_assessment",
+        "reaction_mechanism_summary",
+        "safety_message",
+        "safety_basis",
+        "general_reasoning",
+    ]
+    for field in fields:
+        value = getattr(prediction, field, None)
+        if isinstance(value, str):
+            setattr(prediction, field, _replace_phrases(value, replacements))
+    prediction.assumptions_made = [
+        _replace_phrases(item, replacements) for item in prediction.assumptions_made
+    ]
+    for catalyst in prediction.catalysts:
+        catalyst.reasoning = _replace_phrases(catalyst.reasoning, replacements)
+        if catalyst.efficiency_basis:
+            catalyst.efficiency_basis = _replace_phrases(catalyst.efficiency_basis, replacements)
+
+
+def _filter_side_reactions(prediction: PredictionResponse, request: PredictionRequest) -> None:
+    prediction.side_reactions = [
+        item for item in prediction.side_reactions if _side_reaction_is_supported(item, request)
+    ]
+
+
+def _side_reaction_is_supported(item: str, request: PredictionRequest) -> bool:
+    text = item.lower()
+    unsupported_markers = (
+        "hydrazine",
+        "n2h4",
+        "enzyme",
+        "biological",
+        "requires",
+        "additional catalyst",
+        "different catalyst",
+        "plasma",
+        "electrochemical",
+        "photochemical",
+        "uv",
+    )
+    if any(marker in text for marker in unsupported_markers):
+        return False
+    if "under these conditions" in text or "same conditions" in text or "commonly observed" in text:
+        return True
+    return False
+
+
+def _sanitize_safety(prediction: PredictionResponse) -> None:
+    if prediction.safety_level.value == "SAFE":
+        prediction.safety_message = "Low hazard under standard lab handling; hazards depend on concentration and conditions."
+    elif "safe" in prediction.safety_message.lower():
+        prediction.safety_message = prediction.safety_message.replace(
+            "safe", "hazard-controlled"
+        ).replace("Safe", "Hazard-controlled")
+
+
+def _replace_phrases(value: str, replacements: dict[str, str]) -> str:
+    updated = value
+    for old, new in replacements.items():
+        updated = updated.replace(old, new).replace(old.capitalize(), new.capitalize())
+    return updated
+
+
+def _normalize_label(value: str) -> str:
+    normalized = (value or "Unknown").strip().lower()
+    if normalized == "fast":
+        return "Fast"
+    if normalized in {"medium", "moderate"}:
+        return "Medium"
+    if normalized == "slow":
+        return "Slow"
+    if normalized == "high":
+        return "High"
+    if normalized == "low":
+        return "Low"
+    return "Unknown"
+
+
+def _normalize_confidence(value: str | None) -> str:
+    normalized = (value or "Low").strip().lower()
+    if normalized == "high":
+        return "High"
+    if normalized == "medium":
+        return "Medium"
+    return "Low"
+
+
+def _downgrade_confidence(value: str | None) -> str:
+    current = _normalize_confidence(value)
+    if current == "High":
+        return "Medium"
+    return "Low"
 
 
 def _merge_unique(existing: list[str] | None, additions: list[str]) -> list[str]:

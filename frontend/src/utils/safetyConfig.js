@@ -16,7 +16,7 @@ export const SAFETY_TIERS = {
     borderColor: '#16a34a',
     bannerBg: 'bg-green-500/15',
     textColor: 'text-green-400',
-    label: 'SAFE TO PERFORM',
+    label: 'LOW HAZARD INDICATED',
     icon: '✅',
     action: 'proceed',
     showResults: true,
@@ -64,7 +64,7 @@ export const SAFETY_TIERS = {
     icon: '☠️',
     action: 'block',
     showResults: false,  // Block all output
-    blockMessage: 'This reaction cannot be safely conducted outside a professional laboratory. Results have been hidden for safety.',
+    blockMessage: 'Do not perform without a documented professional risk assessment and appropriate controls. Results have been hidden.',
   },
 };
 

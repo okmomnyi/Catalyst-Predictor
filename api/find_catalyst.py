@@ -36,9 +36,45 @@ def handler():
         import json
         data = json.loads(cleaned)
 
-        return jsonify(data)
+        return jsonify(_sanitize_finder_payload(data))
 
     except json.JSONDecodeError as e:
         return (jsonify({"error": f"AI returned malformed JSON: {e}"}), 422)
     except Exception as e:
         return (jsonify({"error": f"Catalyst search failed: {str(e)}"}), 500)
+
+
+def _sanitize_finder_payload(data):
+    for catalyst in data.get("catalysts", []):
+        catalyst["why"] = _sanitize_text(catalyst.get("why", ""))
+        catalyst["conditions"] = _sanitize_text(catalyst.get("conditions"))
+        catalyst["safety_note"] = _sanitize_safety_text(catalyst.get("safety_note"))
+    data["reaction_understood"] = _sanitize_text(data.get("reaction_understood", ""))
+    data["recommended_conditions"] = _sanitize_text(data.get("recommended_conditions"))
+    data["notes"] = _sanitize_safety_text(data.get("notes"))
+    return data
+
+
+def _sanitize_text(value):
+    if value is None:
+        return None
+    replacements = {
+        "goes to completion": "is thermodynamically favorable",
+        "go to completion": "be thermodynamically favorable",
+        "best catalyst": "evaluated catalyst",
+        "optimal": "supported",
+        "physiological conditions": "specified conditions",
+    }
+    updated = value
+    for old, new in replacements.items():
+        updated = updated.replace(old, new).replace(old.capitalize(), new.capitalize())
+    return updated
+
+
+def _sanitize_safety_text(value):
+    updated = _sanitize_text(value)
+    if updated is None:
+        return None
+    if "safe" in updated.lower():
+        return "Hazards depend on concentration, conditions, and handling controls."
+    return updated

@@ -31,7 +31,7 @@ class CatalystPrediction(BaseModel):
     activation_energy_reduction: Optional[str] = None
     activation_energy_range_kj_mol: Optional[str] = None
     rate_law: Optional[str] = None
-    efficiency_score: float
+    efficiency_score: Optional[float] = None
     efficiency_basis: Optional[str] = None
     reasoning: str
     activity: Optional[float] = None

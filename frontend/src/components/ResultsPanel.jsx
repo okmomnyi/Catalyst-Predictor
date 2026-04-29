@@ -11,18 +11,18 @@ function ThermalCard({ temperature }) {
       <span className="material-symbols-outlined text-tertiary mb-4 mx-auto block" style={{ fontSize: 40 }}>
         temp_preferences_custom
       </span>
-      <h4 className="font-syne font-semibold text-on-surface text-xl">Thermal Stability</h4>
+      <h4 className="font-syne font-semibold text-on-surface text-xl">Submitted Temperature</h4>
       <p className="text-slate-500 text-sm mt-2 leading-relaxed">
-        Predicted stability peak at{' '}
+        Prediction evaluated at{' '}
         <span className="text-tertiary font-grotesk font-medium">{temperature}°C</span>{' '}
-        with minimal degradation.
+        only. No supported optimum is inferred.
       </p>
     </div>
   );
 }
 
 function ConfidenceCard({ efficiency, catalyst }) {
-  const pct = Math.round(efficiency * 100);
+  const pct = typeof efficiency === 'number' ? Math.round(efficiency * 100) : null;
   return (
     <div
       className="glass-panel rounded-2xl p-6 bg-gradient-to-br from-secondary-container/20 to-transparent"
@@ -32,9 +32,12 @@ function ConfidenceCard({ efficiency, catalyst }) {
         <span className="material-symbols-outlined text-secondary" style={{ fontSize: 24 }}>auto_awesome</span>
         <span className="text-xs font-grotesk text-secondary uppercase tracking-widest">AI Confidence</span>
       </div>
-      <div className="font-syne font-bold text-on-surface" style={{ fontSize: 38 }}>{pct}%</div>
+      <div className="font-syne font-bold text-on-surface" style={{ fontSize: 38 }}>
+        {pct === null ? 'Low' : `${pct}%`}
+      </div>
       <p className="text-slate-500 text-sm mt-2 leading-relaxed">
-        Top catalyst <span className="text-secondary font-grotesk font-medium">{catalyst}</span> scored {pct}% based on reaction kinetics analysis.
+        Evaluated catalyst <span className="text-secondary font-grotesk font-medium">{catalyst}</span>{' '}
+        {pct === null ? 'has insufficient data for numerical scoring.' : `has a supported score of ${pct}%.`}
       </p>
     </div>
   );
@@ -61,7 +64,7 @@ function QualityBadge({ quality, missing }) {
         </p>
         {!isQuant && missing?.length > 0 && (
           <p className="text-xs text-slate-400 mt-1">
-            Add to unlock quantitative results:{' '}
+            Missing for quantitative results:{' '}
             <span className="text-yellow-400">{missing.join(', ')}</span>
           </p>
         )}
@@ -288,7 +291,7 @@ export default function ResultsPanel({ prediction, formTemp }) {
                   </motion.div>
                   {bestCat && (
                     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }}>
-                      <ConfidenceCard efficiency={bestCat.efficiency_score} catalyst={prediction.best_catalyst} />
+                      <ConfidenceCard efficiency={bestCat.efficiency_score} catalyst={bestCat.catalyst} />
                     </motion.div>
                   )}
                 </div>
@@ -322,7 +325,7 @@ export default function ResultsPanel({ prediction, formTemp }) {
                   <h3 className="font-syne font-semibold text-on-surface text-base">Reaction Summary</h3>
                   {prediction.best_catalyst && (
                     <span className="ml-auto text-xs font-grotesk text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-full">
-                      ★ Best: {prediction.best_catalyst}
+                      Top evaluated: {prediction.best_catalyst}
                     </span>
                   )}
                 </div>

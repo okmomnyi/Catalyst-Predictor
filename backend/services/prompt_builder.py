@@ -18,7 +18,9 @@ CRITICAL RULES:
 4. NEVER GUESS SAFETY. When uncertain, classify as RESTRICTED minimum.
 5. SEPARATE THERMODYNAMICS FROM KINETICS. Equilibrium favorability and reaction rate are different quantities.
 6. NEVER assign high scores when rate, yield, stability, or safety-relevant assumptions are poor.
-7. RESPOND IN RAW JSON ONLY. No markdown. No text outside the JSON. Machine-parsed output."""
+7. IF DATA IS MISSING, write "insufficient data"; do not fill gaps with defaults.
+8. Avoid absolute safety claims. Use "low hazard under standard lab handling" or "hazards depend on concentration and conditions".
+9. RESPOND IN RAW JSON ONLY. No markdown. No text outside the JSON. Machine-parsed output."""
 
 _DETAIL_SCHEMA = """
 REQUIRED JSON SCHEMA - return ONLY this object, nothing before or after:
@@ -69,15 +71,15 @@ REQUIRED JSON SCHEMA - return ONLY this object, nothing before or after:
       "activation_energy_reduction": "Catalyst effect as a range or null",
       "activation_energy_range_kj_mol": "e.g. 120-160 or null; use ranges, not fake precision",
       "rate_law": "e.g. First order in H2O2 or null",
-      "efficiency_score": 0.72,
-      "efficiency_basis": "Must reflect weighted score and caps; never merge thermodynamics and kinetics",
+      "efficiency_score": null,
+      "efficiency_basis": "insufficient data unless quantitative inputs support scoring",
       "reasoning": "Detailed scientific explanation",
       "activity": 72,
       "selectivity": 80,
       "stability": 70,
       "energy_efficiency": 65,
       "economic_viability": 90,
-      "weighted_score": 74.0,
+      "weighted_score": null,
       "score_constraints": ["Caps or penalties applied"],
       "relative_rate": null,
       "equilibrium_yield_score": null,
@@ -88,7 +90,7 @@ REQUIRED JSON SCHEMA - return ONLY this object, nothing before or after:
     }}
   ],
 
-  "best_catalyst": "Name of top catalyst or null if none valid",
+  "best_catalyst": "Name of top catalyst only if multiple catalysts are evaluated; null if only one catalyst",
   "safety_level": "SAFE or CAUTION or RESTRICTED or DANGER or DO_NOT_PERFORM",
   "safety_message": "One precise sentence stating the primary hazard",
   "safety_basis": "What specifically causes this safety classification",
@@ -176,13 +178,15 @@ ANALYSIS REQUIRED - for ALL submissions, regardless of mode:
 2. CATALYST ANALYSIS
    - Rank by effectiveness for THIS reaction and THESE T/P conditions.
    - Provide separate rate, yield/equilibrium, activation-energy range, and rate law where known.
-   - Use this weighted score: 0.30*activity + 0.20*selectivity + 0.20*stability + 0.15*energy_efficiency + 0.15*economic_viability.
+   - If concentration, volume, or catalyst loading are missing, do not provide numerical scores; write "insufficient data".
+   - Only when inputs support scoring, use this weighted score: 0.30*activity + 0.20*selectivity + 0.20*stability + 0.15*energy_efficiency + 0.15*economic_viability.
    - Cap scores when rate or yield are poor; no score above 80 if any key metric is poor.
    - Cite basis as "literature range", "engineering estimate", or "qualitative - [what is missing]".
 
 3. SAFETY ANALYSIS
    - Consider products, realistic byproducts, T, P, solvent, and catalyst handling.
-   - Flag unrealistic or unsafe conditions.
+   - Flag unrealistic or hazardous conditions.
+   - Do not call a reaction safe; use conditional hazard language.
    - List specific precautions.
 
 {_DETAIL_SCHEMA}
@@ -215,7 +219,7 @@ ADDITIONAL CONTEXT:
 Tasks:
 1. Interpret what reaction the user is describing.
 2. Suggest 2-5 catalysts ranked by condition-dependent suitability.
-3. For each: explain why it works, optimal conditions, availability, safety, and uncertainty.
+3. For each: explain why it works, supported conditions, availability, safety, and uncertainty.
 4. If the description is chemically unclear or impossible, explain what is wrong.
 
 Suitability: Excellent | Good | Moderate | Poor
@@ -233,7 +237,7 @@ Return ONLY this JSON:
       "suitability": "Excellent",
       "suitability_score": 0.95,
       "why": "Why this catalyst is suitable - mechanism, known effectiveness, and uncertainty",
-      "conditions": "Optimal temperature, concentration, pH, solvent",
+      "conditions": "Supported temperature, concentration, pH, solvent, or insufficient data",
       "availability": "Where it can be sourced",
       "safety": "SAFE or CAUTION or RESTRICTED or DANGER",
       "safety_note": "Specific hazard or precaution for this catalyst"
