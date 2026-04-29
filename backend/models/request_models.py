@@ -14,7 +14,7 @@ class PredictionRequest(BaseModel):
     catalysts: List[str] = Field(default=[], max_length=6,
         description="Leave empty to let the AI suggest catalysts automatically")
     temperature_celsius: float = Field(..., ge=-100, le=2000)
-    pressure_atm: Optional[float] = Field(default=1.0)
+    pressure_atm: Optional[float] = Field(default=1.0, gt=0, le=1000)
     solvent: Optional[str] = Field(default="water")
 
     # Optional specificity fields — GIGO principle.

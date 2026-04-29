@@ -46,10 +46,24 @@ def parse_prediction_response(raw_response: str) -> PredictionResponse:
             yield_quantitative=c.get("yield_quantitative"),
             yield_basis=c.get("yield_basis"),
             activation_energy_reduction=c.get("activation_energy_reduction"),
+            activation_energy_range_kj_mol=c.get("activation_energy_range_kj_mol"),
             rate_law=c.get("rate_law"),
             efficiency_score=float(c.get("efficiency_score", 0.5)),
             efficiency_basis=c.get("efficiency_basis"),
             reasoning=c.get("reasoning", ""),
+            activity=_optional_float(c.get("activity")),
+            selectivity=_optional_float(c.get("selectivity")),
+            stability=_optional_float(c.get("stability")),
+            energy_efficiency=_optional_float(c.get("energy_efficiency")),
+            economic_viability=_optional_float(c.get("economic_viability")),
+            weighted_score=_optional_float(c.get("weighted_score")),
+            score_constraints=c.get("score_constraints") or [],
+            relative_rate=_optional_float(c.get("relative_rate")),
+            equilibrium_yield_score=_optional_float(c.get("equilibrium_yield_score")),
+            thermodynamic_assessment=c.get("thermodynamic_assessment"),
+            kinetic_assessment=c.get("kinetic_assessment"),
+            condition_warnings=c.get("condition_warnings") or [],
+            confidence=c.get("confidence"),
         ))
 
     # Determine best_catalyst: use AI's answer if valid catalysts exist
@@ -72,7 +86,12 @@ def parse_prediction_response(raw_response: str) -> PredictionResponse:
         side_reactions=data.get("side_reactions", []),
         byproducts=data.get("byproducts", []),
         thermodynamics=data.get("thermodynamics"),
+        thermodynamic_assessment=data.get("thermodynamic_assessment"),
+        kinetic_assessment=data.get("kinetic_assessment"),
         reaction_mechanism_summary=data.get("reaction_mechanism_summary"),
+        condition_warnings=data.get("condition_warnings") or [],
+        consistency_checks=data.get("consistency_checks") or [],
+        uncertainty_notes=data.get("uncertainty_notes") or [],
         catalysts=catalysts,
         best_catalyst=best,
         safety_level=SafetyLevel(data["safety_level"]),
@@ -82,3 +101,12 @@ def parse_prediction_response(raw_response: str) -> PredictionResponse:
         general_reasoning=data["general_reasoning"],
         assumptions_made=data.get("assumptions_made", []),
     )
+
+
+def _optional_float(value):
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
