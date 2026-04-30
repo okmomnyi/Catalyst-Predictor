@@ -1,222 +1,204 @@
 # Catalyst Effect Predictor
 
-An AI-powered web application that predicts catalyst effectiveness for chemical reactions. Built for science students and researchers, it uses large language models to provide detailed reaction analysis — including primary equations, side reactions, byproducts, thermodynamics, and ranked catalyst recommendations — all from a clean, modern interface.
+An AI-assisted web application for comparing catalysts for chemical reactions. The app accepts reactants, reaction conditions, and optional catalyst candidates, then uses OpenRouter to generate a structured reaction analysis with ranked catalyst recommendations, safety guidance, and experiment-validation support.
 
----
+The project contains:
+
+- A local FastAPI backend in `backend/`
+- Vercel Python serverless functions in `api/`
+- A React/Vite frontend in `frontend/`
+
+> Safety note: model output is advisory and can be wrong or incomplete. Do not use this app as the sole authority for hazardous chemistry, lab procedures, or regulatory decisions.
 
 ## Features
 
-- **Catalyst Prediction** — Enter your reactants and catalysts; the AI validates each substance, ranks them by effectiveness, and explains the mechanism
-- **AI-Suggest Mode** — Skip the catalysts entirely; the AI identifies the reaction type and recommends the 2–4 best catalysts automatically
-- **GIGO Principle** — Vague inputs give qualitative results (Fast/Slow). Add concentration, volume, and catalyst mass to unlock quantitative predictions with units
-- **Detailed Reaction Analysis** — Every prediction includes the balanced primary equation, side reactions, byproducts with hazard notes, thermodynamics (ΔH), and a mechanism summary
-- **5-Tier Safety System** — Every prediction is rated `SAFE` → `CAUTION` → `RESTRICTED` → `DANGER` → `DO_NOT_PERFORM` with specific precautions
-- **Catalyst Finder** — Describe a reaction in plain English and get ranked catalyst suggestions with conditions and availability
-- **Experiment History** — All predictions are saved locally in the browser; view, expand, and delete past results from the History tab
-- **Fallback API Key** — Automatically retries with a secondary OpenRouter key on rate-limit or timeout errors
-
----
+- Catalyst prediction from reactants, reaction type, catalyst candidates, temperature, pressure, solvent, and optional quantitative fields
+- AI-suggest mode when the catalyst list is empty
+- Structured reaction analysis with primary equation, side reactions, byproducts, thermodynamic notes, mechanism summary, assumptions, and uncertainty notes
+- Five-level safety classification: `SAFE`, `CAUTION`, `RESTRICTED`, `DANGER`, and `DO_NOT_PERFORM`
+- Catalyst Finder page for natural-language catalyst suggestions
+- Browser-local prediction history through `localStorage`
+- Experiment validation endpoint that compares a measured completion time with the AI-predicted rate bucket
+- Optional Supabase persistence for predictions and experimental results
+- Optional fallback OpenRouter API key for rate-limit, timeout, and service-error retries
 
 ## Tech Stack
 
 ### Backend
-| | |
+
+| Area | Technology |
 |---|---|
-| **Runtime** | Python 3.10+ |
-| **Framework** | FastAPI 0.111 |
-| **AI** | OpenRouter API → Google Gemini 2.0 Flash |
-| **HTTP Client** | httpx (async) |
-| **Validation** | Pydantic v2 |
-| **Storage** | Local JSON (default) · Supabase (optional) |
+| Local API | FastAPI 0.111 + Uvicorn |
+| Serverless API | Flask 2.3 wrappers in `api/` |
+| AI provider | OpenRouter chat completions |
+| Default model | `google/gemini-2.0-flash-001` |
+| HTTP client | httpx |
+| Validation | Pydantic v2 |
+| Optional storage | Supabase |
+| Local fallback storage | JSON file in `backend/data/experimental_store.json` |
 
 ### Frontend
-| | |
-|---|---|
-| **Framework** | React 18 + Vite 5 |
-| **Styling** | Tailwind CSS v3 |
-| **Animations** | Framer Motion |
-| **Charts** | Recharts |
-| **HTTP** | Axios |
 
----
+| Area | Technology |
+|---|---|
+| Framework | React 18 + Vite 5 |
+| Styling | Tailwind CSS |
+| Animations | Framer Motion |
+| Charts | Recharts |
+| HTTP client | Axios |
 
 ## Project Structure
 
-```
+```text
 Catalyst Predictor/
-├── backend/
-│   ├── main.py                    # FastAPI entry point + CORS config
-│   ├── requirements.txt
-│   ├── .env.example               # Copy → .env and fill in your keys
-│   ├── data/
-│   │   └── experimental_store.json  # Runtime data (gitignored)
-│   ├── models/
-│   │   ├── request_models.py      # Pydantic input validation
-│   │   └── response_models.py     # Pydantic output schemas
-│   ├── routes/
-│   │   ├── predict.py             # POST /api/predict
-│   │   ├── validate.py            # POST /api/validate-result
-│   │   ├── finder.py              # POST /api/find-catalyst
-│   │   └── health.py              # GET  /api/health
-│   └── services/
-│       ├── openrouter.py          # Async AI client with fallback key
-│       ├── prompt_builder.py      # System + user prompt construction
-│       ├── response_parser.py     # AI JSON → Pydantic models
-│       ├── safety_classifier.py   # Safety level logic
-│       └── supabase_client.py     # Optional Supabase persistence
-└── frontend/
-    ├── index.html
-    ├── vite.config.js
-    ├── tailwind.config.js
-    ├── .env.example
-    └── src/
-        ├── App.jsx                # Root layout + tab routing
-        ├── api/catalystApi.js     # Axios API client
-        ├── components/
-        │   ├── PredictionForm.jsx # Main input form
-        │   ├── ResultsPanel.jsx   # Full results display
-        │   ├── TopNav.jsx         # Top navigation bar
-        │   ├── Sidebar.jsx        # Left navigation panel
-        │   ├── TagInput.jsx       # Multi-tag input (double-space or Enter)
-        │   ├── CatalystChart.jsx  # Efficiency bar chart
-        │   ├── ComparisonTable.jsx# Catalyst comparison grid
-        │   ├── SafetyBanner.jsx   # Safety level banner
-        │   └── ExperimentLogger.jsx
-        ├── pages/
-        │   ├── CatalystFinderPage.jsx
-        │   ├── HistoryPage.jsx    # Past predictions from localStorage
-        │   └── ComingSoonPage.jsx
-        ├── hooks/
-        │   └── usePrediction.js   # Prediction state + auto-save to history
-        ├── context/
-        │   └── SafetyContext.jsx  # Global safety level state
-        └── utils/
-            ├── historyStorage.js  # localStorage history (save/load/delete)
-            └── safetyConfig.js
+|-- api/                         # Vercel serverless Flask functions
+|   |-- find_catalyst.py
+|   |-- health.py
+|   |-- predict.py
+|   `-- validate.py
+|-- backend/
+|   |-- main.py                  # FastAPI app for local development
+|   |-- requirements.txt
+|   |-- .env.example
+|   |-- data/
+|   |   `-- experimental_store.json  # Runtime data, gitignored
+|   |-- models/
+|   |   |-- request_models.py
+|   |   `-- response_models.py
+|   |-- routes/
+|   |   |-- finder.py             # POST /api/find-catalyst
+|   |   |-- health.py             # GET  /api/health
+|   |   |-- predict.py            # POST /api/predict
+|   |   `-- validate.py           # POST /api/validate
+|   `-- services/
+|       |-- chemistry_postprocessor.py
+|       |-- openrouter.py
+|       |-- prompt_builder.py
+|       |-- response_parser.py
+|       |-- safety_classifier.py
+|       `-- supabase_client.py
+|-- frontend/
+|   |-- index.html
+|   |-- package.json
+|   |-- vite.config.js            # Includes /api proxy to localhost:8000
+|   |-- tailwind.config.js
+|   |-- .env.example
+|   `-- src/
+|       |-- App.jsx
+|       |-- api/catalystApi.js
+|       |-- components/
+|       |-- context/
+|       |-- hooks/
+|       |-- pages/
+|       |-- styles/
+|       `-- utils/
+|-- scripts/
+|   `-- test_serverless.py
+|-- requirements.txt             # Dependencies for Vercel serverless functions
+|-- start-app.ps1                # Starts backend and frontend on Windows
+|-- start-app.bat
+`-- vercel.json
 ```
 
----
+## Prerequisites
 
-## Getting Started
+- Python 3.10 or newer. The repo's `.python-version` is `3.12`.
+- Node.js 18 or newer
+- An OpenRouter API key
 
-### Prerequisites
+## Local Development
 
-- Python 3.10 or higher
-- Node.js 18 or higher
-- An [OpenRouter](https://openrouter.ai) API key (free tier works)
+### 1. Backend setup
 
----
+From the project root:
 
-### 1. Clone the repo
-
-```bash
-git clone https://github.com/YOUR_USERNAME/catalyst-predictor.git
-cd catalyst-predictor
-```
-
----
-
-### 2. Backend setup
-
-```bash
+```powershell
 cd backend
-
-# Create and activate a virtual environment
 python -m venv .venv
-.venv\Scripts\activate        # Windows
-# source .venv/bin/activate   # macOS / Linux
-
-# Install dependencies
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-
-# Configure environment
-cp .env.example .env
+Copy-Item .env.example .env
 ```
 
-Open `backend/.env` and fill in your keys:
+Edit `backend/.env`:
 
 ```env
 OPENROUTER_API_KEY=sk-or-v1-...
 OPENROUTER_API_KEY_2=sk-or-v1-...   # optional fallback
 MODEL_ID=google/gemini-2.0-flash-001
 
-# Leave blank to use local JSON storage
+# Optional. Leave blank or use placeholder values to use local JSON fallback storage.
 SUPABASE_URL=
 SUPABASE_ANON_KEY=
 ```
 
-Start the API server:
+Start the local API:
 
-```bash
-uvicorn main:app --reload --port 8000
+```powershell
+python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-The API will be available at `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs`.
+The local API is available at `http://localhost:8000`, with interactive docs at `http://localhost:8000/docs`.
 
----
+### 2. Frontend setup
 
-### 3. Frontend setup
+In a second terminal:
 
-```bash
+```powershell
 cd frontend
-
-# Install dependencies
 npm install
-
-# Configure environment
-cp .env.example .env
-```
-
-The default `frontend/.env` points to the local backend — no changes needed for local development:
-
-```env
-VITE_API_BASE_URL=http://localhost:8000/api
-```
-
-Start the dev server:
-
-```bash
+Copy-Item .env.example .env
 npm run dev
 ```
 
-Open `http://localhost:5173` in your browser.
+Open `http://localhost:5173`.
 
----
+`frontend/.env.example` uses:
 
-### Start the whole app
+```env
+VITE_API_BASE_URL=/api
+```
 
-On Windows, you can start both the backend and frontend from the project root:
+That works locally because `frontend/vite.config.js` proxies `/api` to `http://localhost:8000`. You can also set `VITE_API_BASE_URL=http://localhost:8000/api` if you want the browser to call the backend directly.
+
+### 3. Start both apps on Windows
+
+From the project root:
 
 ```powershell
 .\start-app.ps1
 ```
 
-Or use the batch wrapper:
-
-```bat
-start-app.bat
-```
-
-To install dependencies first, run:
+Install dependencies first and then start both apps:
 
 ```powershell
 .\start-app.ps1 -Install
 ```
 
-The script starts the API at `http://localhost:8000` and the frontend at `http://localhost:5173`.
+The script starts:
 
----
+- Backend: `http://localhost:8000`
+- API docs: `http://localhost:8000/docs`
+- Frontend: `http://localhost:5173`
+
+The batch wrapper runs the same PowerShell script:
+
+```bat
+start-app.bat
+```
 
 ## API Endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/health` | Backend status check |
-| `POST` | `/api/predict` | Full catalyst prediction |
-| `POST` | `/api/find-catalyst` | Catalyst finder from description |
-| `POST` | `/api/validate-result` | Compare prediction to lab result |
+The local FastAPI app exposes routes with and without the `/api` prefix. The frontend uses the `/api` versions.
 
-### Example: `/api/predict`
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/health` | Backend status and configured model |
+| `POST` | `/api/predict` | Full catalyst prediction |
+| `POST` | `/api/find-catalyst` | Catalyst suggestions from a plain-language reaction description |
+| `POST` | `/api/validate` | Compare an experimental result with a stored prediction |
+
+### Example: `POST /api/predict`
 
 ```json
 {
@@ -232,40 +214,67 @@ The script starts the API at `http://localhost:8000` and the frontend at `http:/
 }
 ```
 
-Leave `catalysts` as an empty array `[]` to activate AI-suggest mode.
+Leave `catalysts` as an empty array to request AI-suggested catalysts:
 
----
+```json
+{
+  "reaction_type": "Decomposition",
+  "reactants": ["Hydrogen Peroxide"],
+  "catalysts": [],
+  "temperature_celsius": 25
+}
+```
+
+### Example: `POST /api/find-catalyst`
+
+```json
+{
+  "description": "Find a catalyst for decomposing hydrogen peroxide in a school lab",
+  "reaction_type": "Decomposition",
+  "temperature_celsius": 25,
+  "context": "Use commonly available, lower-risk materials"
+}
+```
+
+### Example: `POST /api/validate`
+
+```json
+{
+  "prediction_id": "prediction-id-from-api-predict",
+  "catalyst": "MnO2",
+  "time_to_completion_seconds": 42,
+  "observation_notes": "Visible bubbling slowed after the first minute"
+}
+```
 
 ## Environment Variables
 
-### Backend (`backend/.env`)
+### Backend: `backend/.env`
 
 | Variable | Required | Description |
-|----------|----------|-------------|
+|---|---|---|
 | `OPENROUTER_API_KEY` | Yes | Primary OpenRouter API key |
-| `OPENROUTER_API_KEY_2` | No | Fallback key on rate-limit/timeout |
-| `MODEL_ID` | No | OpenRouter model (default: `google/gemini-2.0-flash-001`) |
-| `SUPABASE_URL` | No | Supabase project URL — omit to use local JSON |
+| `OPENROUTER_API_KEY_2` | No | Fallback key used for retryable OpenRouter failures |
+| `MODEL_ID` | No | OpenRouter model ID. Defaults to `google/gemini-2.0-flash-001` in the OpenRouter client |
+| `APP_URL` | No | Referer URL sent to OpenRouter. Defaults to Vercel URL or `http://localhost:5173` |
+| `SUPABASE_URL` | No | Supabase project URL. Leave blank or as the placeholder to use local JSON fallback |
 | `SUPABASE_ANON_KEY` | No | Supabase anonymous key |
 
-### Frontend (`frontend/.env`)
+### Frontend: `frontend/.env`
 
 | Variable | Required | Description |
-|----------|----------|-------------|
-| `VITE_API_BASE_URL` | Yes | Backend API base URL |
+|---|---|---|
+| `VITE_API_BASE_URL` | No | API base URL. Defaults to `/api` in the frontend client |
 
----
+## Deployment Notes
 
-## Deploying to Vercel
+`vercel.json` is configured with Vercel experimental services:
 
-This repo is configured for Vercel from the project root:
+- `frontend/` is built as a Vite app and served at `/`
+- `backend/main.py` is configured as a FastAPI service mounted at `/api`
+- The repo also contains `api/*.py` Flask serverless functions and a root `requirements.txt` for that serverless layout
 
-- `vercel.json` installs and builds the Vite app in `frontend/`
-- static output is served from `frontend/dist`
-- Python serverless functions are served from `api/`
-- `/api/*` requests stay on the serverless API, and all other routes fall back to the React app
-
-Add these environment variables in Vercel Project Settings:
+Set these environment variables in Vercel:
 
 ```env
 OPENROUTER_API_KEY=sk-or-v1-...
@@ -273,24 +282,47 @@ OPENROUTER_API_KEY_2=sk-or-v1-...   # optional
 MODEL_ID=google/gemini-2.0-flash-001
 APP_URL=https://your-vercel-domain.vercel.app
 
-# Optional, but recommended for persistent experiment validation on Vercel
+# Optional, recommended if you need persistence beyond temporary/serverless storage.
 SUPABASE_URL=
 SUPABASE_ANON_KEY=
 ```
 
-The frontend defaults to `VITE_API_BASE_URL=/api`, so you do not need to set it on Vercel unless the API is hosted elsewhere.
+The frontend defaults to `VITE_API_BASE_URL=/api`, so you only need to override it if the API is hosted somewhere else.
 
----
+## Persistence
+
+Predictions are saved to Supabase only when both `SUPABASE_URL` and `SUPABASE_ANON_KEY` are configured with non-placeholder values.
+
+Without Supabase:
+
+- The local FastAPI validation flow uses `backend/data/experimental_store.json`
+- The Vercel Flask validation function uses `/tmp/experimental_store.json` when `VERCEL` is set
+- Browser history is still saved in the user's browser through `localStorage`
+
+The SQL schema needed for Supabase is documented in `backend/services/supabase_client.py`.
+
+## Development Checks
+
+Build the frontend:
+
+```powershell
+cd frontend
+npm run build
+```
+
+Run the serverless smoke-test script:
+
+```powershell
+python scripts/test_serverless.py
+```
 
 ## Security Notes
 
-- `backend/.env` and `frontend/.env` are listed in `.gitignore` and will **never** be committed
-- Use `.env.example` files as templates — they contain no real credentials
-- Rotate your OpenRouter key immediately if it is ever exposed in a log, message, or public location
-- The `backend/data/experimental_store.json` runtime file is also gitignored
-
----
+- `.env`, `.env.local`, and other local environment files are gitignored
+- `backend/.env.example` and `frontend/.env.example` are templates only
+- `backend/data/experimental_store.json` is gitignored because it is runtime data
+- Rotate any OpenRouter key immediately if it is exposed in logs, screenshots, chat messages, or a public repository
 
 ## License
 
-MIT — free to use, modify, and distribute.
+No license file is currently included in this repository.

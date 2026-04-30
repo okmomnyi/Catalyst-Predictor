@@ -1,251 +1,303 @@
 """
-Prompt construction for catalyst prediction and catalyst search.
+services/prompt_builder.py — v2.0
 
-The prompt asks the model for chemistry context only. Deterministic scoring and
-consistency checks are applied later in chemistry_postprocessor.py.
+Complete rebuild implementing:
+  - GIGO principle: output precision matches input precision
+  - Source taxonomy: every numerical value labelled by origin
+  - Hard prohibitions: no invented metrics, no solvent-as-catalyst
+  - Strict catalyst validation before any prediction
+  - Honest uncertainty: "cannot determine" is a valid output
 """
 
 from models.request_models import PredictionRequest
 
-SYSTEM_PROMPT = """You are a senior analytical chemist with expertise in reaction
-kinetics, catalysis, thermodynamics, and laboratory safety. You reason from
-established chemical principles and peer-reviewed data.
 
-CRITICAL RULES:
-1. NEVER invent numerical values. State literature values as such; state when values cannot be determined.
-2. ACCURACY SCALES WITH INPUT. Vague input = qualitative output. Exact quantities = quantitative output.
-3. CATALYST VALIDATION IS MANDATORY when catalysts are provided. Exclude non-catalysts from predictions.
-4. NEVER GUESS SAFETY. When uncertain, classify as RESTRICTED minimum.
-5. SEPARATE THERMODYNAMICS FROM KINETICS. Equilibrium favorability and reaction rate are different quantities.
-6. NEVER assign high scores when rate, yield, stability, or safety-relevant assumptions are poor.
-7. IF DATA IS MISSING, write "insufficient data"; do not fill gaps with defaults.
-8. Avoid absolute safety claims. Use "low hazard under standard lab handling" or "hazards depend on concentration and conditions".
-9. RESPOND IN RAW JSON ONLY. No markdown. No text outside the JSON. Machine-parsed output."""
+SYSTEM_PROMPT = """You are a senior analytical chemist. Your role is to provide 
+scientifically accurate, honest predictions about chemical reactions and catalyst 
+performance. You reason strictly from established chemistry principles.
 
-_DETAIL_SCHEMA = """
-REQUIRED JSON SCHEMA - return ONLY this object, nothing before or after:
+════════════════════════════════════════
+ABSOLUTE PROHIBITIONS — NEVER VIOLATE
+════════════════════════════════════════
 
-{{
-  "reaction_type_identified": "The reaction type (e.g. Decomposition, Oxidation-Reduction)",
-  "primary_reaction_equation": "Balanced chemical equation with arrows (e.g. 2H2O2 -> 2H2O + O2)",
-  "side_reactions": [
-    "Only chemically realistic side reactions under the submitted conditions"
-  ],
-  "byproducts": [
-    "Compound name - properties and any hazard"
-  ],
-  "thermodynamics": "Equilibrium thermodynamics only: exothermic/endothermic, delta-H/delta-G/K_eq if known as ranges or literature values; do not mix with rate",
-  "thermodynamic_assessment": "Condition-aware equilibrium assessment at the submitted T and P",
-  "kinetic_assessment": "Rate/activation-barrier assessment only, including Arrhenius trend and catalyst dependence",
-  "reaction_mechanism_summary": "2-3 sentences explaining the mechanistic steps",
-  "condition_warnings": ["Warnings about unrealistic or unsafe T/P/solvent assumptions"],
-  "consistency_checks": ["Checks applied to prevent rate/yield/score contradictions"],
-  "uncertainty_notes": ["Ranges, confidence limits, missing data, and why exact values are not claimed"],
+1. NEVER invent numerical values. Every number you output must be either:
+   (a) A known literature value — state its source context (e.g. "NIST", "CRC Handbook", "established kinetics")
+   (b) Calculated directly from the user's specific numerical inputs — show the basis
+   (c) If neither applies: output null and state "cannot be determined from inputs provided"
 
-  "reaction_summary": "One precise sentence describing the overall transformation",
-  "prediction_quality": "QUANTITATIVE or QUALITATIVE",
-  "missing_for_quantitative": ["inputs needed, or empty array"],
-  "ai_suggested_catalysts": false,
+2. NEVER output a percentage for risk, confidence, or safety unless it is a 
+   stoichiometric ratio or thermodynamic probability with a defined mathematical basis.
+   Risk is a CATEGORY (SAFE/CAUTION/RESTRICTED/DANGER/DO_NOT_PERFORM), not a percentage.
 
-  "catalyst_validation": [
-    {{
-      "substance": "Name as submitted",
-      "is_valid_catalyst": true,
-      "catalytic_mechanism": "Mechanistic explanation",
-      "invalidity_reason": null
-    }}
-  ],
-  "valid_catalyst_count": 1,
+3. NEVER accept a solvent as a catalyst. Water, ethanol, acetone, DMSO and other 
+   solvents facilitate reactions by providing a medium — they do not lower activation 
+   energy and are not catalysts. Flag any solvent submitted as a catalyst immediately.
 
-  "catalysts": [
-    {{
-      "catalyst": "Catalyst name",
-      "rank": 1,
-      "catalyst_type": "Heterogeneous or Homogeneous or Biological (enzyme)",
-      "predicted_rate": "Fast or Medium or Slow",
-      "rate_quantitative": null,
-      "rate_basis": "qualitative only - concentration or site density not provided",
-      "predicted_yield": "High or Medium or Low",
-      "yield_quantitative": null,
-      "yield_basis": "qualitative only - equilibrium/reactor data not provided",
-      "activation_energy_reduction": "Catalyst effect as a range or null",
-      "activation_energy_range_kj_mol": "e.g. 120-160 or null; use ranges, not fake precision",
-      "rate_law": "e.g. First order in H2O2 or null",
-      "efficiency_score": null,
-      "efficiency_basis": "insufficient data unless quantitative inputs support scoring",
-      "reasoning": "Detailed scientific explanation",
-      "activity": 72,
-      "selectivity": 80,
-      "stability": 70,
-      "energy_efficiency": 65,
-      "economic_viability": 90,
-      "weighted_score": null,
-      "score_constraints": ["Caps or penalties applied"],
-      "relative_rate": null,
-      "equilibrium_yield_score": null,
-      "thermodynamic_assessment": "Per-catalyst equilibrium/yield implications if relevant",
-      "kinetic_assessment": "Per-catalyst Arrhenius/rate implications",
-      "condition_warnings": [],
-      "confidence": "high, medium, or low"
-    }}
-  ],
+4. NEVER accept a reactant or product of the reaction as a catalyst. 
+   A catalyst is consumed and regenerated — a substance that is consumed net is a reactant.
 
-  "best_catalyst": "Name of top catalyst only if multiple catalysts are evaluated; null if only one catalyst",
-  "safety_level": "SAFE or CAUTION or RESTRICTED or DANGER or DO_NOT_PERFORM",
-  "safety_message": "One precise sentence stating the primary hazard",
-  "safety_basis": "What specifically causes this safety classification",
-  "precautions": ["Precaution 1", "Precaution 2"],
-  "general_reasoning": "Full explanation: reaction chemistry, why top catalyst wins, limiting factors, what to expect",
-  "assumptions_made": ["Every assumption this prediction depends on"]
-}}"""
+5. NEVER list a byproduct or side reaction unless it is a documented, named side 
+   reaction for this specific system. Do not speculate about possible byproducts.
+
+6. NEVER use a generic rate law template (e.g. rate = k[A][B]) unless that specific 
+   rate law is experimentally established in literature for this reaction. If the rate 
+   law is unknown, say so.
+
+7. NEVER mix the primary reaction with parallel reactions in the same analysis. 
+   If parallel reactions exist, list them separately and clearly labelled.
+
+8. If the user's input describes a reaction that does not exist chemically 
+   (impossible reaction, wrong products), state this clearly and explain why.
+
+════════════════════════════════════════
+SOURCE TAXONOMY — APPLY TO EVERY VALUE
+════════════════════════════════════════
+
+Before outputting any numerical or categorical value, internally ask:
+  - Is this a LITERATURE value? (known, published, citable)
+  - Is this CALCULATED from the user's specific inputs?
+  - Is this QUALITATIVE only? (directional, no number possible)
+  - Is this UNAVAILABLE? (genuinely cannot be determined)
+
+Every field that accepts a number or rating must also have a corresponding 
+_basis field declaring which of these four categories applies.
+
+════════════════════════════════════════
+OUTPUT FORMAT
+════════════════════════════════════════
+Respond in raw JSON only. No markdown. No text outside the JSON object.
+Malformed JSON breaks the application."""
 
 
 def build_prediction_prompt(request: PredictionRequest) -> tuple[str, str]:
-    ai_suggest_mode = len(request.catalysts) == 0
+    """
+    Builds the two-stage prediction prompt with full GIGO and honesty controls.
 
-    notes = []
+    Stage 1: Substance classification — validates every submitted catalyst
+    Stage 2: Prediction — only for confirmed catalysts, accuracy tied to inputs
+
+    The specificity report tells the AI exactly what was and wasn't provided
+    so it knows which fields can be quantitative vs qualitative.
+    """
+
+    # ── Specificity report ──────────────────────────────────────────────────
+    # Tells the AI what it has to work with so it knows where it must say
+    # "unavailable" vs where it can give quantitative output
+
+    specificity_lines = []
+
     if request.concentration is not None:
-        notes.append(f"Reactant concentration: {request.concentration} mol/L (specific - use only where scientifically justified)")
+        specificity_lines.append(
+            f"  ✓ Concentration: {request.concentration} mol/L → "
+            f"rate calculations possible"
+        )
     else:
-        notes.append("Reactant concentration: not provided - qualitative only")
-    if request.volume_ml is not None:
-        notes.append(f"Volume: {request.volume_ml} mL")
-    else:
-        notes.append("Volume: not provided")
-    if request.catalyst_mass_g is not None:
-        notes.append(f"Catalyst mass: {request.catalyst_mass_g} g")
-    else:
-        notes.append("Catalyst mass: not provided - no quantitative catalyst loading")
-    if request.num_trials is not None:
-        notes.append(f"Trials planned: {request.num_trials}")
+        specificity_lines.append(
+            "  ✗ Concentration: NOT PROVIDED → "
+            "rate must be qualitative only. Do not output a rate number."
+        )
 
-    specificity_block = "\n".join(f"  - {n}" for n in notes)
+    if request.volume_ml is not None:
+        specificity_lines.append(
+            f"  ✓ Volume: {request.volume_ml} mL → "
+            f"mole quantities calculable"
+        )
+    else:
+        specificity_lines.append(
+            "  ✗ Volume: NOT PROVIDED → "
+            "mole quantities unavailable"
+        )
+
+    if request.catalyst_mass_g is not None:
+        specificity_lines.append(
+            f"  ✓ Catalyst mass: {request.catalyst_mass_g} g → "
+            f"catalyst loading ratio calculable"
+        )
+    else:
+        specificity_lines.append(
+            "  ✗ Catalyst mass: NOT PROVIDED → "
+            "catalyst loading unknown. Yield must be qualitative only."
+        )
+
+    if request.num_trials is not None:
+        specificity_lines.append(
+            f"  ✓ Trials planned: {request.num_trials}"
+        )
+
+    specificity_block = "\n".join(specificity_lines)
+
+    # ── Catalyst list ────────────────────────────────────────────────────────
+    catalyst_lines = "\n".join(
+        f"  {i+1}. \"{c}\"" for i, c in enumerate(request.catalysts)
+    )
+
     reactant_list = ", ".join(request.reactants)
 
-    if ai_suggest_mode:
-        catalyst_section = """CATALYST MODE: AI-SUGGEST
-No catalysts were specified. You must:
-  1. Identify what reaction(s) the reactants would undergo.
-  2. Suggest 2-4 plausible catalysts for this reaction.
-  3. Rank them by condition-dependent performance, not by a hardcoded preference.
-  4. Explain mechanism, conditions, availability, and safety.
-  Set "ai_suggested_catalysts": true in the response."""
-    else:
-        catalyst_list = "\n".join(f"  {i + 1}. {c}" for i, c in enumerate(request.catalysts))
-        catalyst_section = f"""CATALYST MODE: USER-SPECIFIED
-Substances submitted as catalysts:
-{catalyst_list}
+    # ── Full prompt ──────────────────────────────────────────────────────────
+    user_prompt = f"""
+REACTION PARAMETERS
+───────────────────
+Reaction Type  : {request.reaction_type}
+Reactants      : {reactant_list}
+Temperature    : {request.temperature_celsius}°C
+Pressure       : {request.pressure_atm} atm
+Solvent        : {request.solvent}
 
-Validate each substance: is it chemically capable of catalysing THIS specific reaction?
-If NO, state why and exclude it. If YES, confirm the mechanism.
-Set "ai_suggested_catalysts": false."""
+INPUT SPECIFICITY REPORT
+────────────────────────
+(This determines which fields you may populate with numbers vs qualitative labels)
 
-    reaction_type_str = (
-        "NOT SPECIFIED - identify and state the reaction type from the reactants"
-        if request.reaction_type.lower() in ("auto-detect", "auto detect", "")
-        else request.reaction_type
-    )
-    solvent_str = (
-        "NOT SPECIFIED - assume aqueous only if the chemistry supports it"
-        if (request.solvent or "").lower() in ("auto-detect", "auto detect", "")
-        else request.solvent
-    )
-
-    user_prompt = f"""REACTION PARAMETERS:
-- Reaction Type: {reaction_type_str}
-- Reactants: {reactant_list}
-- Temperature: {request.temperature_celsius} C
-- Pressure: {request.pressure_atm} atm
-- Solvent: {solvent_str}
-
-INPUT SPECIFICITY REPORT:
 {specificity_block}
 
-{catalyst_section}
+SUBSTANCES SUBMITTED FOR CATALYST EVALUATION
+─────────────────────────────────────────────
+{catalyst_lines}
 
-ANALYSIS REQUIRED - for ALL submissions, regardless of mode:
+══════════════════════════════════════════════════
+STAGE 1 — SUBSTANCE CLASSIFICATION (MANDATORY FIRST)
+══════════════════════════════════════════════════
 
-1. REACTION IDENTIFICATION
-   - What type of reaction is this?
-   - Write the primary balanced equation.
-   - List only chemically realistic side reactions under the submitted conditions.
-   - For Haber-Bosch, do not include hydrazine formation unless the user explicitly asks about nonstandard plasma/electrochemical pathways and you justify it.
-   - List byproducts with properties and hazards.
-   - State thermodynamics separately: delta-H, delta-G, K_eq, and equilibrium trend if known.
-   - State kinetics separately: activation barrier, rate law, Arrhenius trend, and catalyst dependence if known.
-   - Summarise the reaction mechanism in 2-3 sentences.
+Classify every submitted substance. For each one determine:
 
-2. CATALYST ANALYSIS
-   - Rank by effectiveness for THIS reaction and THESE T/P conditions.
-   - Provide separate rate, yield/equilibrium, activation-energy range, and rate law where known.
-   - If concentration, volume, or catalyst loading are missing, do not provide numerical scores; write "insufficient data".
-   - Only when inputs support scoring, use this weighted score: 0.30*activity + 0.20*selectivity + 0.20*stability + 0.15*energy_efficiency + 0.15*economic_viability.
-   - Cap scores when rate or yield are poor; no score above 80 if any key metric is poor.
-   - Cite basis as "literature range", "engineering estimate", or "qualitative - [what is missing]".
+  VALID_CATALYST     → confirmed to catalyse this specific reaction in literature
+  SOLVENT            → provides reaction medium, does not lower Ea, is NOT a catalyst
+  REACTANT           → consumed net in the reaction, is NOT a catalyst  
+  PRODUCT            → produced in the reaction, is NOT a catalyst
+  INHIBITOR          → slows the reaction, opposite of a catalyst
+  INERT              → no chemical role in this reaction
+  WRONG_REACTION     → catalyses a different reaction, not this one
+  UNKNOWN            → insufficient data to classify
 
-3. SAFETY ANALYSIS
-   - Consider products, realistic byproducts, T, P, solvent, and catalyst handling.
-   - Flag unrealistic or hazardous conditions.
-   - Do not call a reaction safe; use conditional hazard language.
-   - List specific precautions.
+For anything that is NOT a VALID_CATALYST, provide a clear one-sentence 
+chemical explanation of what it actually is and why it cannot be a catalyst here.
 
-{_DETAIL_SCHEMA}
-"""
-    return SYSTEM_PROMPT, user_prompt
+Only substances classified as VALID_CATALYST proceed to Stage 2.
+If zero valid catalysts are found, Stage 2 is skipped entirely.
 
+══════════════════════════════════════════════════
+STAGE 2 — PREDICTION (valid catalysts only)
+══════════════════════════════════════════════════
 
-def build_catalyst_finder_prompt(
-    description: str,
-    reaction_type: str | None,
-    temperature: float | None,
-    context: str | None,
-) -> tuple[str, str]:
-    extras = []
-    if reaction_type:
-        extras.append(f"Reaction type: {reaction_type}")
-    if temperature is not None:
-        extras.append(f"Temperature: {temperature} C")
-    if context:
-        extras.append(f"Context: {context}")
-    extra_block = "\n".join(f"  - {e}" for e in extras) if extras else "  - None provided"
+REACTION ANALYSIS:
+  - State the correct reaction type and balanced primary equation
+  - State ΔH° only if it is a known literature value — include source context
+  - State K_eq only if it is a known literature value
+  - List parallel/side reactions ONLY if they are documented for this system,
+    separated clearly from the primary reaction
+  - If the rate law is experimentally established in literature, state it with source
+  - If the rate law is unknown, output "rate_law": "not established in literature"
 
-    user_prompt = f"""A user wants to find suitable catalysts for the following reaction:
+FOR EACH VALID CATALYST:
+  Rate prediction:
+    - If concentration was provided → attempt quantitative estimate with units
+    - If concentration was NOT provided → qualitative only (Fast/Medium/Slow)
+      and set rate_quantitative to null
+    
+  Yield prediction:
+    - If catalyst mass and volume provided → attempt quantitative estimate
+    - Otherwise → qualitative only (High/Medium/Low)
+      and set yield_quantitative to null
 
-DESCRIPTION: {description}
+  Activation energy:
+    - Only state Ea reduction if this specific catalyst's effect on this
+      specific reaction is documented. Otherwise null.
 
-ADDITIONAL CONTEXT:
-{extra_block}
+  Efficiency score:
+    - A relative ranking score between 0.0 and 1.0 based ONLY on the
+      relative performance of the catalysts in THIS submitted list.
+    - Do not compare to catalysts not in the list.
+    - State the basis: what property drives the ranking.
 
-Tasks:
-1. Interpret what reaction the user is describing.
-2. Suggest 2-5 catalysts ranked by condition-dependent suitability.
-3. For each: explain why it works, supported conditions, availability, safety, and uncertainty.
-4. If the description is chemically unclear or impossible, explain what is wrong.
+SAFETY:
+  Classify using exactly one tier:
+    SAFE           → standard lab, no significant hazard
+    CAUTION        → irritants, mild exotherm, or minor fumes — ventilation needed
+    RESTRICTED     → toxic gas possible, significant exotherm, corrosive products —
+                     supervisor and fume hood mandatory
+    DANGER         → explosive risk, acutely toxic products, violent reaction,
+                     or severe injury possible — professional oversight only
+    DO_NOT_PERFORM → no safe amateur or school laboratory context exists
 
-Suitability: Excellent | Good | Moderate | Poor
-Availability: Widely available (school/college) | Specialty (university) | Industrial only | Rare
+  Safety basis must name the SPECIFIC hazard (e.g. "produces Cl₂ gas",
+  "highly exothermic — ΔH = -411 kJ/mol", "sodium reacts violently with water").
+  Do NOT output a risk percentage. Safety is a category, not a number.
 
-Return ONLY this JSON:
+══════════════════════════════════════════════════
+REQUIRED JSON SCHEMA — return this structure exactly
+══════════════════════════════════════════════════
 
 {{
-  "reaction_understood": "One sentence: what reaction you interpreted",
-  "catalysts": [
+  "prediction_quality": "QUANTITATIVE | QUALITATIVE",
+  "missing_for_quantitative": [],
+
+  "reaction": {{
+    "type": "reaction type string",
+    "balanced_equation": "balanced chemical equation",
+    "delta_h_kjmol": null,
+    "delta_h_basis": "literature value (NIST) | calculated from inputs | unavailable",
+    "k_eq": null,
+    "k_eq_basis": "literature value | unavailable",
+    "rate_law": "established rate law or 'not established in literature'",
+    "rate_law_basis": "literature value | unavailable",
+    "side_reactions": [
+      {{
+        "equation": "balanced side reaction equation",
+        "conditions": "when/why this occurs",
+        "documented_source_context": "e.g. occurs above 100°C per established kinetics"
+      }}
+    ],
+    "reaction_summary": "one precise sentence"
+  }},
+
+  "substance_classification": [
     {{
-      "name": "MnO2",
-      "full_name": "Manganese Dioxide",
-      "catalyst_type": "Heterogeneous or Homogeneous or Biological (enzyme)",
-      "suitability": "Excellent",
-      "suitability_score": 0.95,
-      "why": "Why this catalyst is suitable - mechanism, known effectiveness, and uncertainty",
-      "conditions": "Supported temperature, concentration, pH, solvent, or insufficient data",
-      "availability": "Where it can be sourced",
-      "safety": "SAFE or CAUTION or RESTRICTED or DANGER",
-      "safety_note": "Specific hazard or precaution for this catalyst"
+      "substance": "name as submitted",
+      "classification": "VALID_CATALYST | SOLVENT | REACTANT | PRODUCT | INHIBITOR | INERT | WRONG_REACTION | UNKNOWN",
+      "explanation": "one sentence chemical explanation",
+      "proceeds_to_prediction": true
     }}
   ],
-  "recommended_conditions": "Overall best conditions for this reaction",
-  "overall_safety": "SAFE or CAUTION or RESTRICTED or DANGER or DO_NOT_PERFORM",
-  "notes": "Alternatives, warnings, or anything else the user should know"
+
+  "valid_catalyst_count": 0,
+  "prediction_skipped_reason": null,
+
+  "catalysts": [
+    {{
+      "catalyst": "name",
+      "rank": 1,
+      "catalyst_type": "Heterogeneous | Homogeneous | Biological",
+      "catalytic_mechanism": "mechanistic explanation",
+
+      "predicted_rate": "Fast | Medium | Slow",
+      "rate_quantitative": null,
+      "rate_basis": "qualitative only — concentration not provided | calculated from inputs | literature value",
+
+      "predicted_yield": "High | Medium | Low",
+      "yield_quantitative": null,
+      "yield_basis": "qualitative only — catalyst mass not provided | calculated | literature value",
+
+      "activation_energy_reduction_kjmol": null,
+      "activation_energy_basis": "literature value for this catalyst-reaction pair | unavailable",
+
+      "efficiency_score": 0.0,
+      "efficiency_basis": "relative ranking within submitted list based on [property]",
+
+      "scientific_reasoning": "full explanation grounded in chemistry"
+    }}
+  ],
+
+  "best_catalyst": "name or null if no valid catalysts",
+
+  "safety_level": "SAFE | CAUTION | RESTRICTED | DANGER | DO_NOT_PERFORM",
+  "safety_message": "one sentence naming the specific hazard",
+  "safety_basis": "specific chemical hazard e.g. produces H2 gas, violent exotherm",
+  "precautions": [],
+
+  "general_reasoning": "full scientific explanation",
+  "assumptions_made": []
 }}
+
+Return ONLY the JSON object. Nothing before it. Nothing after it.
 """
+
     return SYSTEM_PROMPT, user_prompt
