@@ -1,14 +1,14 @@
 """
 POST /api/predict
 
-Full prediction pipeline: validate → build prompt → call OpenRouter →
+Full prediction pipeline: validate → build prompt → call NVIDIA NIM →
 parse response → attach safety config → persist to Supabase (if configured).
 """
 
 from fastapi import APIRouter, HTTPException
 from models.request_models import PredictionRequest
 from services.prompt_builder import build_prediction_prompt
-from services.openrouter import call_openrouter
+from services.nvidia import call_nvidia
 from services.response_parser import parse_prediction_response
 from services.chemistry_postprocessor import apply_chemistry_consistency
 from services.safety_classifier import get_safety_config
@@ -23,8 +23,8 @@ async def predict_catalyst(request: PredictionRequest):
         # 1. Build AI prompt
         system_prompt, user_prompt = build_prediction_prompt(request)
 
-        # 2. Call OpenRouter (async, non-blocking)
-        raw_response = await call_openrouter(system_prompt, user_prompt)
+        # 2. Call NVIDIA NIM (async, non-blocking)
+        raw_response = await call_nvidia(system_prompt, user_prompt)
 
         # 3. Parse + validate JSON response
         prediction = apply_chemistry_consistency(

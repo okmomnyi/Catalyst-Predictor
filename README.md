@@ -1,6 +1,6 @@
 # Catalyst Effect Predictor
 
-An AI-assisted web application for comparing catalysts for chemical reactions. The app accepts reactants, reaction conditions, and optional catalyst candidates, then uses OpenRouter to generate a structured reaction analysis with ranked catalyst recommendations, safety guidance, and experiment-validation support.
+An AI-assisted web application for comparing catalysts for chemical reactions. The app accepts reactants, reaction conditions, and optional catalyst candidates, then uses NVIDIA NIM (free open-source models) to generate a structured reaction analysis with ranked catalyst recommendations, safety guidance, and experiment-validation support.
 
 The project contains:
 
@@ -20,7 +20,7 @@ The project contains:
 - Browser-local prediction history through `localStorage`
 - Experiment validation endpoint that compares a measured completion time with the AI-predicted rate bucket
 - Optional Supabase persistence for predictions and experimental results
-- Optional fallback OpenRouter API key for rate-limit, timeout, and service-error retries
+- Optional fallback NVIDIA API key for rate-limit, timeout, and service-error retries
 
 ## Tech Stack
 
@@ -30,8 +30,8 @@ The project contains:
 |---|---|
 | Local API | FastAPI 0.111 + Uvicorn |
 | Serverless API | Flask 2.3 wrappers in `api/` |
-| AI provider | OpenRouter chat completions |
-| Default model | `google/gemini-2.0-flash-001` |
+| AI provider | NVIDIA NIM (build.nvidia.com) chat completions |
+| Default model | `deepseek-ai/deepseek-r1` (any build.nvidia.com model ID works) |
 | HTTP client | httpx |
 | Validation | Pydantic v2 |
 | Optional storage | Supabase |
@@ -72,7 +72,7 @@ Catalyst Predictor/
 |   |   `-- validate.py           # POST /api/validate
 |   `-- services/
 |       |-- chemistry_postprocessor.py
-|       |-- openrouter.py
+|       |-- nvidia.py
 |       |-- prompt_builder.py
 |       |-- response_parser.py
 |       |-- safety_classifier.py
@@ -104,7 +104,7 @@ Catalyst Predictor/
 
 - Python 3.10 or newer. The repo's `.python-version` is `3.12`.
 - Node.js 18 or newer
-- An OpenRouter API key
+- An NVIDIA NIM API key (free at https://build.nvidia.com)
 
 ## Local Development
 
@@ -123,9 +123,9 @@ Copy-Item .env.example .env
 Edit `backend/.env`:
 
 ```env
-OPENROUTER_API_KEY=sk-or-v1-...
-OPENROUTER_API_KEY_2=sk-or-v1-...   # optional fallback
-MODEL_ID=google/gemini-2.0-flash-001
+NVIDIA_API_KEY=nvapi-...
+NVIDIA_API_KEY_2=nvapi-...   # optional fallback
+MODEL_ID=deepseek-ai/deepseek-r1
 
 # Optional. Leave blank or use placeholder values to use local JSON fallback storage.
 SUPABASE_URL=
@@ -253,10 +253,9 @@ Leave `catalysts` as an empty array to request AI-suggested catalysts:
 
 | Variable | Required | Description |
 |---|---|---|
-| `OPENROUTER_API_KEY` | Yes | Primary OpenRouter API key |
-| `OPENROUTER_API_KEY_2` | No | Fallback key used for retryable OpenRouter failures |
-| `MODEL_ID` | No | OpenRouter model ID. Defaults to `google/gemini-2.0-flash-001` in the OpenRouter client |
-| `APP_URL` | No | Referer URL sent to OpenRouter. Defaults to Vercel URL or `http://localhost:5173` |
+| `NVIDIA_API_KEY` | Yes | Primary NVIDIA NIM API key |
+| `NVIDIA_API_KEY_2` | No | Fallback key used for retryable NVIDIA failures |
+| `MODEL_ID` | No | Any NVIDIA NIM model ID. Defaults to `deepseek-ai/deepseek-r1` in the NVIDIA client |
 | `SUPABASE_URL` | No | Supabase project URL. Leave blank or as the placeholder to use local JSON fallback |
 | `SUPABASE_ANON_KEY` | No | Supabase anonymous key |
 
@@ -277,9 +276,9 @@ Leave `catalysts` as an empty array to request AI-suggested catalysts:
 Set these environment variables in Vercel:
 
 ```env
-OPENROUTER_API_KEY=sk-or-v1-...
-OPENROUTER_API_KEY_2=sk-or-v1-...   # optional
-MODEL_ID=google/gemini-2.0-flash-001
+NVIDIA_API_KEY=nvapi-...
+NVIDIA_API_KEY_2=nvapi-...   # optional
+MODEL_ID=deepseek-ai/deepseek-r1
 APP_URL=https://your-vercel-domain.vercel.app
 
 # Optional, recommended if you need persistence beyond temporary/serverless storage.
@@ -321,7 +320,7 @@ python scripts/test_serverless.py
 - `.env`, `.env.local`, and other local environment files are gitignored
 - `backend/.env.example` and `frontend/.env.example` are templates only
 - `backend/data/experimental_store.json` is gitignored because it is runtime data
-- Rotate any OpenRouter key immediately if it is exposed in logs, screenshots, chat messages, or a public repository
+- Rotate any NVIDIA key immediately if it is exposed in logs, screenshots, chat messages, or a public repository
 
 ## License
 

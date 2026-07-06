@@ -10,11 +10,11 @@ sys.path.insert(0, os.path.join(ROOT, "backend"))
 
 # Provide minimal env required
 os.environ.setdefault("MODEL_ID", "test-model")
-os.environ.setdefault("OPENROUTER_API_KEY", "dummy_key")
+os.environ.setdefault("NVIDIA_API_KEY", "dummy_key")
 
 import importlib
 
-import services.openrouter as openrouter_mod
+import services.nvidia as nvidia_mod
 
 
 async def fake_call(system_prompt, user_prompt):
@@ -44,7 +44,7 @@ async def fake_call(system_prompt, user_prompt):
     return json.dumps(payload)
 
 
-openrouter_mod.call_openrouter = fake_call
+nvidia_mod.call_nvidia = fake_call
 
 
 def run_tests():

@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from models.request_models import CatalystSearchRequest
 from models.response_models import CatalystFinderResponse, CatalystSuggestion
 from services.prompt_builder import build_catalyst_finder_prompt
-from services.openrouter import call_openrouter
+from services.nvidia import call_nvidia
 
 router = APIRouter()
 
@@ -24,7 +24,7 @@ async def find_catalyst(request: CatalystSearchRequest):
             temperature=request.temperature_celsius,
             context=request.context,
         )
-        raw = await call_openrouter(system_prompt, user_prompt)
+        raw = await call_nvidia(system_prompt, user_prompt)
 
         cleaned = raw.strip()
         if cleaned.startswith("```"):

@@ -9,7 +9,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "backend"))
 from flask import Flask, request, jsonify
 from models.request_models import PredictionRequest
 from services.prompt_builder import build_prediction_prompt
-from services.openrouter import call_openrouter
+from services.nvidia import call_nvidia
 from services.response_parser import parse_prediction_response
 from services.chemistry_postprocessor import apply_chemistry_consistency
 from services.safety_classifier import get_safety_config
@@ -33,7 +33,7 @@ def handler():
 
         system_prompt, user_prompt = build_prediction_prompt(req)
 
-        raw_response = asyncio.run(call_openrouter(system_prompt, user_prompt))
+        raw_response = asyncio.run(call_nvidia(system_prompt, user_prompt))
 
         prediction = apply_chemistry_consistency(
             parse_prediction_response(raw_response),

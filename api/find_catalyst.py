@@ -8,7 +8,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "backend"))
 from flask import Flask, request, jsonify
 from models.request_models import CatalystSearchRequest
 from services.prompt_builder import build_catalyst_finder_prompt
-from services.openrouter import call_openrouter
+from services.nvidia import call_nvidia
 
 app = Flask(__name__)
 
@@ -26,7 +26,7 @@ def handler():
             context=req.context,
         )
 
-        raw = asyncio.run(call_openrouter(system_prompt, user_prompt))
+        raw = asyncio.run(call_nvidia(system_prompt, user_prompt))
 
         cleaned = raw.strip()
         if cleaned.startswith("```"):

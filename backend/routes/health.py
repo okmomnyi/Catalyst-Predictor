@@ -21,6 +21,6 @@ def health_check():
     """
     return HealthResponse(
         status="ok",
-        model=os.getenv("MODEL_ID", "google/gemini-2.0-flash-exp:free"),
+        model=os.getenv("MODEL_ID", "deepseek-ai/deepseek-r1"),
         version="1.0.0"
     )
